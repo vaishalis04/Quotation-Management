@@ -1,0 +1,39 @@
+{
+  "name": "quotation-management-backend",
+  "version": "1.0.0",
+  "description": "GST-accurate quotation management backend (CCTV, security, IT, electrical) with uploadable quotation layouts",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "nodemon server.js",
+    "seed": "node seed.js",
+    "sync-db": "node sync-db.js",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "bcryptjs": "^3.0.3",
+    "cors": "^2.8.6",
+    "decimal.js": "^10.6.0",
+    "docxtemplater": "^3.71.0",
+    "dotenv": "^18.0.7",
+    "exceljs": "^4.4.0",
+    "express": "^5.3.0",
+    "express-validator": "^7.3.2",
+    "handlebars": "^4.7.10",
+    "helmet": "^8.3.0",
+    "jsonwebtoken": "^9.0.3",
+    "moment": "^2.31.0",
+    "moment-timezone": "^0.6.5",
+    "morgan": "^1.12.1",
+    "multer": "^2.4.0",
+    "mysql2": "^3.24.6",
+    "node-cron": "^4.6.0",
+    "pizzip": "^3.3.0",
+    "sequelize": "^6.37.8"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.14",
+    "sqlite3": "^6.0.1",
+    "supertest": "^7.3.1"
+  }
+}
