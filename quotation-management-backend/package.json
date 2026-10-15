@@ -29,6 +29,7 @@
     "mysql2": "^3.24.6",
     "node-cron": "^4.6.0",
     "pizzip": "^3.3.0",
+    "puppeteer": "^25.14.0",
     "sequelize": "^6.37.8"
   },
   "devDependencies": {
