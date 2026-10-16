@@ -8,6 +8,7 @@
     "dev": "nodemon server.js",
     "seed": "node seed.js",
     "sync-db": "node sync-db.js",
+    "import-catalogue": "node import-catalogue.js",
     "test": "node --test"
   },
   "dependencies": {

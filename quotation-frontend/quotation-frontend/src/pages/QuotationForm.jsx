@@ -2,12 +2,15 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import * as api from '../api/endpoints';
 import { useMeta } from '../context/MetaContext';
+import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { useAsync, useDebounced } from '../utils/hooks';
 import { today, addDays, inr } from '../utils/format';
-import { blankRow, blankCharge, buildPayload, formFromQuotation, isRowFilled } from '../utils/quotationPayload';
+import { blankRow, blankCharge, buildPayload, formFromQuotation, isRowFilled, estimateLine } from '../utils/quotationPayload';
 import { ErrorBox, Spinner, Field } from '../components/ui';
-import ItemPicker from '../components/ItemPicker';
+import ProductPicker, { matchByName } from '../components/ProductPicker';
+import CustomerModal from '../components/CustomerModal';
+import SpecsEditor, { DEFAULT_SPEC_LABELS } from '../components/SpecsEditor';
 import TotalsPanel from '../components/TotalsPanel';
 
 const emptyForm = () => ({
@@ -16,19 +19,24 @@ const emptyForm = () => ({
   discount_type: '', discount_value: '', terms: '', notes: '', template_id: '',
 });
 
+const NONE_PRODUCTS = []; // stable empty list while the product masters load
+
 export default function QuotationForm() {
   const { id } = useParams();
   const editing = !!id;
   const nav = useNavigate();
   const { notify } = useToast();
   const { states } = useMeta();
+  const { canManage } = useAuth();
 
   const [form, setForm] = useState(emptyForm);
   const [rows, setRows] = useState([blankRow()]);
   const [charges, setCharges] = useState([]);
   const [customerLabel, setCustomerLabel] = useState('');
   const [customerSearch, setCustomerSearch] = useState('');
+  const [newCustomer, setNewCustomer] = useState(false);
   const [calc, setCalc] = useState(null);
+  const [calcKey, setCalcKey] = useState(''); // the payload the current `calc` belongs to
   const [calcError, setCalcError] = useState(null);
   const [calculating, setCalculating] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -40,6 +48,8 @@ export default function QuotationForm() {
   const customers = useAsync(() => api.customers.list({ q: cs, limit: 50 }), [cs]);
   const layouts = useAsync(() => api.layouts.list({}), []);
   const termsList = useAsync(() => api.terms.list({}), []);
+  const tree = useAsync(() => api.catalogueMasters.tree(), []); // Product masters: Product -> Company -> Category
+  const chargeMaster = useAsync(() => api.charges.list({}), []); // saved additional charges
   const rates = useAsync(() => api.meta.gstRates(form.quote_date), [form.quote_date]);
 
   // ---- editing: load the quotation into the form
@@ -55,22 +65,45 @@ export default function QuotationForm() {
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.type === 'checkbox' ? e.target.checked : e.target.value }));
   const updateRow = (key, patch) => setRows((rs) => rs.map((r) => (r.key === key ? { ...r, ...patch } : r)));
   const updateCharge = (key, patch) => setCharges((cs2) => cs2.map((c) => (c.key === key ? { ...c, ...patch } : c)));
-  const pickItem = (key, it) => updateRow(key, {
-    item_id: String(it.id), name: it.name, description: it.description || '', hsn_sac: it.hsn_sac || '', unit: it.unit || 'Nos',
-    rate: String(Number(it.rate)), gst_rate: String(Number(it.gst_rate)), section: it.category || '',
-  });
+  // custom-label suggestions
+  const specSuggestions = DEFAULT_SPEC_LABELS;
+  // a customer created from this screen is saved to Customers and selected straight away
+  const onCustomerSaved = (c) => {
+    setForm((f) => ({ ...f, customer_id: String(c.id) }));
+    setCustomerLabel(c.name); setCustomerSearch('');
+    customers.reload();
+    notify(`Customer ${c.name} added and selected`);
+  };
+
+  // pick a saved charge: it becomes a normal, fully editable charge row
+  const addSavedCharge = (chargeId) => {
+    const c = (chargeMaster.data || []).find((x) => String(x.id) === String(chargeId));
+    if (!c) return;
+    setCharges((x) => [...x, { ...blankCharge(), name: c.name, hsn_sac: c.hsn_sac || '', amount: String(Number(c.default_amount)), gst_rate: String(Number(c.gst_rate)) }]);
+  };
 
   // ---- live totals: the SAME body that will be saved is sent to /calculate (debounced)
+  // editing: lines of a saved quotation only keep their printed name - show the matching product / company / category again
+  useEffect(() => {
+    const products = tree.data?.products;
+    if (!products || !existing.data) return;
+    setRows((rs) => rs.map((r) => {
+      if (r.product_id || !r.name) return r;
+      const m = matchByName(products, r.name);
+      return m ? { ...r, ...m, brand: r.brand || m.brand } : r;
+    }));
+  }, [tree.data, existing.data]);
+
   const payload = useMemo(() => buildPayload(form, rows, charges, { editing }), [form, rows, charges, editing]);
   const payloadKey = JSON.stringify(payload);
   useEffect(() => {
-    if (!payload) { setCalc(null); setCalcError(null); return undefined; }
+    if (!payload) { setCalc(null); setCalcKey(''); setCalcError(null); return undefined; }
     const my = ++seq.current;
     const t = setTimeout(async () => {
       setCalculating(true);
       try {
         const r = await api.quotations.calculate(payload);
-        if (my === seq.current) { setCalc(r); setCalcError(null); }
+        if (my === seq.current) { setCalc(r); setCalcKey(payloadKey); setCalcError(null); }
       } catch (e) {
         if (my === seq.current) { setCalc(null); setCalcError(e); }
       } finally {
@@ -96,7 +129,12 @@ export default function QuotationForm() {
     return list.includes(cur) || Number.isNaN(cur) ? list : [...list, cur].sort((a, b) => a - b);
   };
   const filledRows = rows.filter(isRowFilled);
-  const lineCalc = (r) => { const i = filledRows.indexOf(r); return i >= 0 && calc ? calc.items[i] : null; };
+  // server figures when they belong to what is on screen; otherwise an instant estimate so qty / rate changes show at once
+  const lineCalc = (r) => {
+    const i = filledRows.indexOf(r);
+    if (i >= 0 && calc && calcKey === payloadKey && calc.items[i]) return calc.items[i];
+    return isRowFilled(r) ? estimateLine(r, form) : null;
+  };
   const stateName = states.find((s) => s.code === calc?.place_of_supply_state_code)?.name;
 
   if (editing && existing.loading) return <Spinner />;
@@ -129,7 +167,7 @@ export default function QuotationForm() {
                     {custOptions.map((c) => <option key={c.id} value={c.id}>{c.name}{c.gstin ? ` · ${c.gstin}` : ''}</option>)}
                   </select>
                 </div>
-                <span className="hint">New customer? <Link to="/customers">Add it first</Link></span>
+                <span className="hint">Not in the list? <button type="button" className="btn sm" onClick={() => setNewCustomer(true)}>+ New customer</button></span>
               </Field>
               <Field label="Quotation date"><input className="input" type="date" value={form.quote_date} onChange={set('quote_date')} /></Field>
               <Field label="Valid until"><input className="input" type="date" value={form.valid_until} onChange={set('valid_until')} /></Field>
@@ -179,8 +217,9 @@ export default function QuotationForm() {
                       <tr key={r.key}>
                         <td>{i + 1}</td>
                         <td>
-                          <ItemPicker value={r.name} onType={(v) => updateRow(r.key, { name: v, item_id: '' })} onPick={(it) => pickItem(r.key, it)} />
+                          <ProductPicker tree={tree.data?.products || NONE_PRODUCTS} row={r} onChange={(patch) => updateRow(r.key, patch)} />
                           <input className="input sm mt" placeholder="Description / specification (optional)" value={r.description} onChange={(e) => updateRow(r.key, { description: e.target.value })} aria-label="Description" />
+                          <SpecsEditor compact value={r.specs} onChange={(v) => updateRow(r.key, { specs: v })} suggestions={specSuggestions} />
                         </td>
                         <td><input className="input w90" value={r.hsn_sac} onChange={(e) => updateRow(r.key, { hsn_sac: e.target.value })} aria-label="HSN/SAC" /></td>
                         <td><input className="input w70" type="number" min="0" step="any" value={r.quantity} onChange={(e) => updateRow(r.key, { quantity: e.target.value })} aria-label="Quantity" /></td>
@@ -226,7 +265,15 @@ export default function QuotationForm() {
                 <button className="btn ghost sm" onClick={() => setCharges((x) => x.filter((y) => y.key !== c.key))} aria-label="Remove charge">✕</button>
               </div>
             ))}
-            <button className="btn" onClick={() => setCharges((x) => [...x, blankCharge()])}>+ Add charge</button>
+            <div className="inline">
+              <select className="input" style={{ width: "auto", minWidth: 260 }} value="" onChange={(e) => addSavedCharge(e.target.value)} aria-label="Pick saved charge">
+                <option value="">— choose a saved charge —</option>
+                {(chargeMaster.data || []).map((c) => <option key={c.id} value={c.id}>{c.name} · ₹{inr(c.default_amount)} · {Number(c.gst_rate)}%</option>)}
+              </select>
+              <button className="btn" onClick={() => setCharges((x) => [...x, blankCharge()])}>+ Add charge</button>
+              {canManage && <Link to="/charges" className="small">Manage saved charges</Link>}
+            </div>
+            {chargeMaster.data?.length === 0 && <span className="hint">No saved charges yet{canManage ? ' — create them under Charges.' : '.'}</span>}
             <hr />
             <div className="inline">
               <span className="label">Overall discount</span>
@@ -273,6 +320,7 @@ export default function QuotationForm() {
           </div>
         </aside>
       </div>
+      {newCustomer && <CustomerModal onSaved={onCustomerSaved} onClose={() => setNewCustomer(false)} />}
     </>
   );
 }

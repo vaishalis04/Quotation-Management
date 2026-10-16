@@ -7,6 +7,7 @@ const { getState, isValidStateCode } = require('../config/states');
 const { stateCodeFromGstin } = require('../utils/gstin');
 const { GST_RATES_CURRENT, GST_RATES_LEGACY_EXTRA, GST_2_EFFECTIVE_DATE, STATUS_TRANSITIONS } = require('../config/constants');
 const { todayStr, financialYearOf } = require('../utils/helpers');
+const { cleanSpecs } = require('../utils/specs');
 
 const allowedRatesFor = (quoteDate) =>
   moment(quoteDate).isBefore(GST_2_EFFECTIVE_DATE) ? [...GST_RATES_CURRENT, ...GST_RATES_LEGACY_EXTRA] : GST_RATES_CURRENT;
@@ -23,7 +24,7 @@ const companySnapshot = (c) => ({
 const customerSnapshot = (c) => ({
   name: c.name, contact_person: c.contact_person, email: c.email, phone: c.phone, gstin: c.gstin, pan: c.pan,
   billing_address: c.billing_address, city: c.city, state: c.state, state_code: c.state_code, pincode: c.pincode,
-  shipping_address: c.shipping_address, shipping_state_code: c.shipping_state_code,
+  shipping_address: c.shipping_address, shipping_state_code: c.shipping_state_code, logo: c.logo,
 });
 
 const clean = (v) => (v === undefined || v === null || v === '' ? null : v);
@@ -75,6 +76,8 @@ const buildQuotationData = async ({ company, body, companyId }) => {
       description: it.description !== undefined ? clean(it.description) : (m && m.description) || null,
       brand: it.brand !== undefined ? clean(it.brand) : (m && m.brand) || null,
       model_no: it.model_no !== undefined ? clean(it.model_no) : (m && m.model_no) || null,
+      // custom labels: what the client sent wins (an empty list clears them), otherwise the catalogue item's
+      specs: it.specs !== undefined ? cleanSpecs(it.specs) : (m && cleanSpecs(m.specs)) || null,
       hsn_sac: clean(it.hsn_sac) || (m && m.hsn_sac) || null,
       unit: clean(it.unit) || (m && m.unit) || 'Nos',
       section: clean(it.section),
@@ -251,7 +254,7 @@ const updateQuotation = async ({ quotation, body, user }) => {
 };
 
 const lineToInput = (l) => ({
-  item_id: l.item_id, name: l.name, description: l.description, brand: l.brand, model_no: l.model_no, hsn_sac: l.hsn_sac,
+  item_id: l.item_id, name: l.name, description: l.description, brand: l.brand, model_no: l.model_no, specs: l.specs, hsn_sac: l.hsn_sac,
   unit: l.unit, section: l.section, quantity: l.quantity, rate: l.rate, discount_type: l.discount_type,
   discount_value: l.discount_value, gst_rate: l.gst_rate,
 });

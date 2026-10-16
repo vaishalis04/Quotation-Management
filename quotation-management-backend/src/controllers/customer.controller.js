@@ -76,6 +76,36 @@ module.exports = {
     }
   },
 
+  // logo of the customer (shown on quotation layouts that use {{customer.logo_data_uri}})
+  uploadLogo: async (req, res, next) => {
+    try {
+      if (!req.file) throw new ApiError(400, "Logo image is required (field name: logo)");
+      const where = { id: req.params.id, is_deleted: false };
+      const companyId = getCompanyId(req);
+      if (companyId) where.company_id = companyId;
+      const customer = await Customer.findOne({ where });
+      if (!customer) throw new ApiError(404, "Customer not found");
+      await customer.update({ logo: `logos/${req.file.filename}`, updated_by: req.user.id });
+      res.json(new ApiResponse(200, customer, "Logo uploaded"));
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  removeLogo: async (req, res, next) => {
+    try {
+      const where = { id: req.params.id, is_deleted: false };
+      const companyId = getCompanyId(req);
+      if (companyId) where.company_id = companyId;
+      const customer = await Customer.findOne({ where });
+      if (!customer) throw new ApiError(404, "Customer not found");
+      await customer.update({ logo: null, updated_by: req.user.id });
+      res.json(new ApiResponse(200, customer, "Logo removed"));
+    } catch (error) {
+      next(error);
+    }
+  },
+
   deleteCustomer: async (req, res, next) => {
     try {
       const where = { id: req.params.id, is_deleted: false };

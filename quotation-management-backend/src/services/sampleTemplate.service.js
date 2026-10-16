@@ -35,7 +35,7 @@ const sampleHtml = () => `<!DOCTYPE html>
   </div>
 </div>
 <div class="grid">
-  <div class="box"><b>Quotation to</b><br>{{customer.name}}<br>{{customer.full_address}}
+  <div class="box"><b>Quotation to</b><br>{{#if customer.logo_data_uri}}<img src="{{customer.logo_data_uri}}" alt="" style="max-height:40px;max-width:120px"><br>{{/if}}{{customer.name}}<br>{{customer.full_address}}
     {{#if customer.gstin}}<br>GSTIN: {{customer.gstin}}{{/if}}
     {{#if quote.kind_attention}}<br>Kind attn: {{quote.kind_attention}}{{/if}}</div>
   <div class="box"><b>Place of supply</b><br>{{quote.place_of_supply}}
@@ -47,7 +47,7 @@ const sampleHtml = () => `<!DOCTYPE html>
   <tbody>
   {{#each items}}
     <tr><td class="center">{{sno}}</td>
-      <td><b>{{name}}</b>{{#if brand}} <small>{{brand}} {{model_no}}</small>{{/if}}{{#if description}}<br><small>{{nl2br description}}</small>{{/if}}{{#if section}}<br><small>[{{section}}]</small>{{/if}}</td>
+      <td><b>{{name}}</b>{{#if brand}} <small>{{brand}} {{model_no}}</small>{{/if}}{{#if description}}<br><small>{{nl2br description}}</small>{{/if}}{{#each specs}}<br><small>{{label}}: {{value}}</small>{{/each}}{{#if section}}<br><small>[{{section}}]</small>{{/if}}</td>
       <td class="center">{{hsn_sac}}</td><td class="right">{{qty}}</td><td class="center">{{unit}}</td><td class="right">{{rate}}</td>
       {{#if @root.has_discount}}<td class="right">{{discount}}</td>{{/if}}<td class="right">{{taxable}}</td>
       {{#if @root.show_gst}}<td class="center">{{gst_rate}}</td><td class="right">{{tax}}</td>{{/if}}<td class="right">{{total}}</td></tr>

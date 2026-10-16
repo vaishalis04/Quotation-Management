@@ -1,6 +1,7 @@
 require('dotenv').config();
 const { sequelize, Company, User, Customer, Item, TermsTemplate, QuotationTemplate } = require('./src/models');
 const { sampleHtml } = require('./src/services/sampleTemplate.service');
+const { backfillItemMasters } = require('./src/services/catalogueMaster.service');
 
 const seed = async () => {
   await sequelize.authenticate();
@@ -30,6 +31,7 @@ const seed = async () => {
     { name: 'CCTV Installation', category: 'Service', item_type: 'service', hsn_sac: '995469', unit: 'Job', rate: 3000, gst_rate: 18 },
   ];
   for (const i of items) await Item.findOrCreate({ where: { company_id: company.id, name: i.name }, defaults: i });
+  await backfillItemMasters(); // product / company / category masters for the demo items
 
   await TermsTemplate.findOrCreate({ where: { company_id: company.id, name: 'Standard CCTV terms' }, defaults: {
     business_type: 'cctv', is_default: true,

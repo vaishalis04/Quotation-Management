@@ -15,8 +15,9 @@ export default function Layout() {
     ['/', 'Dashboard', true],
     ['/quotations', 'Quotations', true],
     ['/customers', 'Customers', true],
-    ['/items', 'Items', true],
+    ['/masters', 'Product masters', canManage],
     ['/terms', 'Terms', canManage],
+    ['/charges', 'Charges', canManage],
     ['/layouts', 'Quotation designs', true],
     ['/company', 'Company', isAdmin],
   ];

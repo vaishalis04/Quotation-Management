@@ -102,7 +102,7 @@ const dummyQuotation = () => {
     igst_amount: calc.totals.igst_amount, tax_amount: calc.totals.tax_amount, round_off: calc.totals.round_off,
     grand_total: calc.totals.grand_total, amount_in_words: calc.totals.amount_in_words, tax_summary: calc.tax_summary,
     lines: [
-      line({ name: 'IP Dome Camera 4MP', unit: 'Nos', hsn_sac: '8525', brand: 'Hikvision', model_no: 'DS-2CD' }, calc.items[0], 0, 'item'),
+      line({ name: 'IP Dome Camera 4MP', unit: 'Nos', hsn_sac: '8525', brand: 'Hikvision', model_no: 'DS-2CD', specs: [{ label: 'Pixels', value: '4MP' }, { label: 'Lens type', value: '2.8mm fixed' }] }, calc.items[0], 0, 'item'),
       line({ name: 'NVR 8 Channel', unit: 'Nos', hsn_sac: '8521', description: 'With 2TB surveillance HDD' }, calc.items[1], 1, 'item'),
       line({ name: 'Installation & commissioning', hsn_sac: '995469' }, calc.charges[0], 0, 'charge'),
     ],

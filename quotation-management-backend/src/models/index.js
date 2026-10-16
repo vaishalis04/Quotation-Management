@@ -10,6 +10,10 @@ const QuotationTemplate = require("./QuotationTemplate.model");
 const TermsTemplate = require("./TermsTemplate.model");
 const NumberSeries = require("./NumberSeries.model");
 const AuditLog = require("./AuditLog.model");
+const ChargeMaster = require("./ChargeMaster.model");
+const ProductMaster = require("./ProductMaster.model");
+const BrandMaster = require("./BrandMaster.model");
+const CategoryMaster = require("./CategoryMaster.model");
 
 // Company -> everything it owns
 Company.hasMany(User, { foreignKey: "company_id", as: "users" });
@@ -32,6 +36,9 @@ TermsTemplate.belongsTo(Company, { foreignKey: "company_id", as: "company" });
 
 Company.hasMany(NumberSeries, { foreignKey: "company_id", as: "number_series" });
 NumberSeries.belongsTo(Company, { foreignKey: "company_id", as: "company" });
+
+Company.hasMany(ChargeMaster, { foreignKey: "company_id", as: "charge_masters" });
+ChargeMaster.belongsTo(Company, { foreignKey: "company_id", as: "company" });
 
 // Quotation
 Customer.hasMany(Quotation, { foreignKey: "customer_id", as: "quotations" });
@@ -65,4 +72,8 @@ module.exports = {
   TermsTemplate,
   NumberSeries,
   AuditLog,
+  ChargeMaster,
+  ProductMaster,
+  BrandMaster,
+  CategoryMaster,
 };

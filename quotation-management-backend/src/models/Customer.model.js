@@ -25,6 +25,7 @@ Customer.init(
     shipping_state_code: { type: DataTypes.STRING(2), allowNull: true },
 
     notes: { type: DataTypes.TEXT, allowNull: true },
+    logo: { type: DataTypes.STRING(255), allowNull: true }, // "logos/<file>" under the uploads folder
     is_active: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true },
     created_by: { type: DataTypes.BIGINT, allowNull: true },
     updated_by: { type: DataTypes.BIGINT, allowNull: true },

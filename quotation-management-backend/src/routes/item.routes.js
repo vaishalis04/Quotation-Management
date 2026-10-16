@@ -11,6 +11,9 @@ router.use(protect);
 
 router.get("/", Controller.getItems);
 router.get("/categories", Controller.getCategories);
+router.get("/spec-labels", Controller.getSpecLabels);
+router.get("/products", Controller.getProducts);
+router.get("/catalogue", Controller.getCatalogue);
 router.get("/:id", Controller.getItem);
 router.post("/", manage, itemRules, Controller.createItem);
 router.put("/:id", manage, itemRules, Controller.updateItem);

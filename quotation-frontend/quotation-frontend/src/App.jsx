@@ -10,8 +10,9 @@ import Quotations from './pages/Quotations';
 import QuotationForm from './pages/QuotationForm';
 import QuotationView from './pages/QuotationView';
 import Customers from './pages/Customers';
-import Items from './pages/Items';
 import Terms from './pages/Terms';
+import Charges from './pages/Charges';
+import CatalogueMasters from './pages/CatalogueMasters';
 import Layouts from './pages/Layouts';
 import Company from './pages/Company';
 
@@ -31,8 +32,9 @@ export const AppRoutes = () => (
       <Route path="quotations/:id" element={<QuotationView />} />
       <Route path="quotations/:id/edit" element={<QuotationForm />} />
       <Route path="customers" element={<Customers />} />
-      <Route path="items" element={<Items />} />
       <Route path="terms" element={<Terms />} />
+      <Route path="charges" element={<Charges />} />
+      <Route path="masters" element={<CatalogueMasters />} />
       <Route path="layouts" element={<Layouts />} />
       <Route path="company" element={<Company />} />
       <Route path="*" element={<Navigate to="/" replace />} />

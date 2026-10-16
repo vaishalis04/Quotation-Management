@@ -10,6 +10,17 @@ export default function FormGrid({ fields, values, setValues, errors = {} }) {
     <div className="grid2">
       {fields.filter((f) => !f.hidden).map((f) => {
         const v = values[f.name] ?? '';
+        // custom control (e.g. logo picker, custom item labels): the field supplies its own editor
+        if (f.render) {
+          return (
+            <div key={f.name} className={`field ${f.wide ? 'wide' : ''}`}>
+              <span className="label">{f.label}</span>
+              {f.render({ value: values[f.name], setValue: (nv) => set(f.name, nv), values, setValues })}
+              {f.hint && <span className="hint">{f.hint}</span>}
+              {errors[f.name] && <span className="err-text">{errors[f.name]}</span>}
+            </div>
+          );
+        }
         let control;
         if (f.type === 'select') {
           control = (

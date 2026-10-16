@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { specsLine } from '../components/SpecsEditor';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import * as api from '../api/endpoints';
 import { downloadFrom } from '../api/client';
@@ -129,7 +130,7 @@ export default function QuotationView() {
                   {q.items.map((l) => (
                     <tr key={l.id}>
                       <td>{l.line_no}</td>
-                      <td><strong>{l.name}</strong>{l.description && <div className="muted small">{l.description}</div>}</td>
+                      <td><strong>{l.name}</strong>{l.description && <div className="muted small">{l.description}</div>}{specsLine(l) && <div className="muted small">{specsLine(l)}</div>}</td>
                       <td>{l.hsn_sac}</td><td className="r">{l.quantity} {l.unit}</td><td className="r">{inr(l.rate)}</td>
                       <td className="r">{inr(l.line_discount + l.overall_discount_share)}</td><td className="r">{inr(l.taxable_amount)}</td>
                       <td className="r">{l.gst_rate}</td><td className="r">{inr(l.line_total)}</td>

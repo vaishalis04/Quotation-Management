@@ -46,12 +46,14 @@ const customerRules = [
 ];
 
 const itemRules = [
-  body('name').if((v, { req }) => req.method === 'POST' || req.body.name !== undefined).trim().notEmpty().withMessage('Item name is required'),
+  // the name may be left empty when a product is given: it is then built as product + category + company
+  body('name').if((v, { req }) => req.method === 'POST' && !String(req.body.product || '').trim() && !String(req.body.product_id || '').trim()).trim().notEmpty().withMessage('Item name is required'),
   body('item_type').optional().isIn(['product', 'service']).withMessage("item_type must be 'product' or 'service'"),
   body('rate').optional().isFloat({ min: 0 }).withMessage('rate must be 0 or more'),
   body('cost_price').optional({ values: 'null' }).isFloat({ min: 0 }).withMessage('cost_price must be 0 or more'),
   body('gst_rate').optional().isFloat({ min: 0, max: 100 }).withMessage('gst_rate must be between 0 and 100'),
   body('hsn_sac').optional({ values: 'falsy' }).matches(/^[0-9]{4,8}$/).withMessage('HSN/SAC must be 4 to 8 digits'),
+  body('specs').optional({ values: 'null' }).isArray({ max: 50 }).withMessage('specs must be a list of { label, value } (max 50)'),
   validate,
 ];
 
@@ -62,4 +64,17 @@ const termsRules = [
   validate,
 ];
 
-module.exports = { companyRules, createCompanyRules, customerRules, itemRules, termsRules, normalizeGstin };
+const chargeRules = [
+  body('name').if((v, { req }) => req.method === 'POST' || req.body.name !== undefined).trim().notEmpty().withMessage('Charge name is required'),
+  body('default_amount').optional({ values: 'falsy' }).isFloat({ min: 0 }).withMessage('Default amount must be 0 or more'),
+  body('gst_rate').optional().isFloat({ min: 0, max: 100 }).withMessage('gst_rate must be between 0 and 100'),
+  body('hsn_sac').optional({ values: 'falsy' }).matches(/^[0-9]{4,8}$/).withMessage('HSN/SAC must be 4 to 8 digits'),
+  validate,
+];
+
+const masterName = (label) => body('name').if((v, { req }) => req.method === 'POST' || req.body.name !== undefined).trim().notEmpty().withMessage(`${label} name is required`).isLength({ max: 150 }).withMessage('Name is too long (max 150)');
+const productMasterRules = [masterName('Product'), validate];
+const companyMasterRules = [masterName('Company'), body('product_id').if((v, { req }) => req.method === 'POST').notEmpty().withMessage('Select the product'), validate];
+const categoryMasterRules = [masterName('Category'), body('product_id').if((v, { req }) => req.method === 'POST').notEmpty().withMessage('Select the product'), validate];
+
+module.exports = { companyRules, createCompanyRules, customerRules, itemRules, termsRules, chargeRules, productMasterRules, companyMasterRules, categoryMasterRules, normalizeGstin };

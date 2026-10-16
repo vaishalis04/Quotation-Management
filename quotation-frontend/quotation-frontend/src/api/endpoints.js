@@ -33,9 +33,21 @@ const crud = (base) => ({
   remove: (id) => request(`${base}/${id}`, { method: 'DELETE' }),
 });
 
-export const customers = crud('/customers');
-export const items = { ...crud('/items'), categories: () => request('/items/categories') };
+export const customers = {
+  ...crud('/customers'),
+  uploadLogo: (id, file) => { const f = new FormData(); f.append('logo', file); return request(`/customers/${id}/logo`, { method: 'POST', form: f }); },
+  removeLogo: (id) => request(`/customers/${id}/logo`, { method: 'DELETE' }),
+};
 export const terms = crud('/terms-templates');
+export const charges = crud('/charges');
+// Product > Company > Category masters
+export const catalogueMasters = {
+  importExcel: (file, dryRun) => { const f = new FormData(); f.append('file', file); return request(`/catalogue-masters/import${dryRun ? '?dry_run=1' : ''}`, { method: 'POST', form: f }); },
+  tree: (all) => request(`/catalogue-masters/tree${all ? '?all=1' : ''}`),
+  products: crud('/catalogue-masters/products'),
+  companies: crud('/catalogue-masters/companies'),
+  categories: crud('/catalogue-masters/categories'),
+};
 
 export const layouts = {
   ...crud('/quotation-templates'),

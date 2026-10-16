@@ -8,6 +8,7 @@ const path = require('path');
 const fs = require('fs');
 const { getState } = require('../config/states');
 const { formatINR, formatQty, formatPercent, formatDate } = require('../utils/format');
+const { specsToText } = require('../utils/specs');
 
 const num = (v) => (v === null || v === undefined || v === '' ? 0 : Number(v));
 
@@ -49,9 +50,12 @@ const build = (q, mode) => {
     section: l.section || '',
     name: l.name,
     description: l.description || '',
-    name_description: l.description ? `${l.name}\n${l.description}` : l.name,
+    name_description: [l.name, l.description, specsToText(l.specs)].filter(Boolean).join('\n'),
     brand: l.brand || '',
     model_no: l.model_no || '',
+    // custom labels: loop with {#specs}{label}: {value}{/specs} (docx) / {{#each specs}} (html), or print them all with specs_text
+    specs: Array.isArray(l.specs) ? l.specs.filter((s) => s && s.label).map((s) => ({ label: s.label, value: s.value || '' })) : [],
+    specs_text: specsToText(l.specs),
     hsn_sac: l.hsn_sac || '',
     unit: l.unit || '',
     qty: qty(l.quantity),
@@ -92,6 +96,7 @@ const build = (q, mode) => {
       billing_address: cu.billing_address || '', shipping_address: cu.shipping_address || cu.billing_address || '',
       city: cu.city || '', state: cu.state || '', state_code: cu.state_code || '', pincode: cu.pincode || '',
       full_address: joinAddress(cu.billing_address, cu.city, cu.state, cu.pincode),
+      logo_data_uri: f ? logoDataUri(cu.logo) : '',
     },
     quote: {
       number: q.display_number || q.quote_number, base_number: q.quote_number, version: q.version,

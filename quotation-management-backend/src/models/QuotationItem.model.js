@@ -20,6 +20,7 @@ QuotationItem.init(
     description: { type: DataTypes.TEXT, allowNull: true },
     brand: { type: DataTypes.STRING(100), allowNull: true },
     model_no: { type: DataTypes.STRING(100), allowNull: true },
+    specs: { type: DataTypes.JSON, allowNull: true }, // copy of the item's custom labels, frozen on the quotation
     hsn_sac: { type: DataTypes.STRING(10), allowNull: true },
     unit: { type: DataTypes.STRING(20), allowNull: true },
 

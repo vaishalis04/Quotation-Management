@@ -3,9 +3,25 @@ const { Item } = require("../models");
 const ApiResponse = require("../utils/ApiResponse");
 const ApiError = require("../utils/ApiError");
 const { getCompanyId, getPagination, paginationMeta, pick } = require("../utils/helpers");
+const { cleanSpecs } = require("../utils/specs");
+const { composeItemName } = require("../utils/itemName");
+const { applyMasters } = require("../services/catalogueMaster.service");
 
-const FIELDS = ["item_type", "category", "sku", "name", "description", "brand", "model_no", "hsn_sac", "unit", "rate",
-  "cost_price", "gst_rate", "warranty", "is_active"];
+const FIELDS = ["item_type", "product", "product_id", "brand_id", "category_id", "category", "sku", "name", "description", "brand", "model_no", "hsn_sac", "unit", "rate",
+  "cost_price", "gst_rate", "warranty", "specs", "is_active"];
+
+// trim the three name parts; '' -> null. When no name is typed it is built from product + category + company.
+const tidy = (patch, existing = {}) => {
+  ["product", "category", "brand"].forEach((k) => {
+    if (patch[k] !== undefined) patch[k] = patch[k] === null || String(patch[k]).trim() === "" ? null : String(patch[k]).trim();
+  });
+  if (patch.name !== undefined) patch.name = String(patch.name || "").trim();
+  if (patch.name === "" || (patch.name === undefined && !existing.name)) {
+    patch.name = composeItemName({ ...existing, ...patch });
+  }
+  if (patch.name !== undefined && !patch.name) throw new ApiError(422, "Item name is required (or give a product to build it from)");
+  return patch;
+};
 
 const scope = (req, extra = {}) => {
   const where = { is_deleted: false, ...extra };
@@ -22,9 +38,10 @@ module.exports = {
       if (req.query.active !== "all") where.is_active = req.query.active === "false" ? false : true;
       if (req.query.item_type) where.item_type = req.query.item_type;
       if (req.query.category) where.category = req.query.category;
+      if (req.query.product) where.product = req.query.product;
       if (req.query.q) {
         const like = `%${req.query.q}%`;
-        where[Op.or] = [{ name: { [Op.like]: like } }, { sku: { [Op.like]: like } }, { brand: { [Op.like]: like } },
+        where[Op.or] = [{ name: { [Op.like]: like } }, { sku: { [Op.like]: like } }, { brand: { [Op.like]: like } }, { product: { [Op.like]: like } }, { category: { [Op.like]: like } },
           { model_no: { [Op.like]: like } }, { hsn_sac: { [Op.like]: like } }];
       }
       const { rows, count } = await Item.findAndCountAll({ where, order: [["name", "ASC"]], limit, offset });
@@ -41,6 +58,39 @@ module.exports = {
     try {
       const rows = await Item.findAll({ where: scope(req, { category: { [Op.ne]: null } }), attributes: ["category"], group: ["category"], order: [["category", "ASC"]], raw: true });
       res.json(new ApiResponse(200, rows.map((r) => r.category)));
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  // distinct products (first step of the quotation picker / filter of the Items page)
+  getProducts: async (req, res, next) => {
+    try {
+      const rows = await Item.findAll({ where: scope(req, { product: { [Op.ne]: null } }), attributes: ["product"], group: ["product"], order: [["product", "ASC"]], raw: true });
+      res.json(new ApiResponse(200, rows.map((r) => r.product)));
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  // the whole active catalogue in one go (no paging): the quotation form builds Product -> Company -> Category from it
+  getCatalogue: async (req, res, next) => {
+    try {
+      const rows = await Item.findAll({ where: scope(req, { is_active: true }), order: [["product", "ASC"], ["brand", "ASC"], ["category", "ASC"], ["name", "ASC"]], limit: 5000 });
+      const canSeeCost = ["super_admin", "company_admin", "manager"].includes(req.user.role);
+      res.json(new ApiResponse(200, rows.map((r) => { const j = r.toJSON(); if (!canSeeCost) delete j.cost_price; return j; })));
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  // every custom label already used on an item - offered as suggestions when typing a new label
+  getSpecLabels: async (req, res, next) => {
+    try {
+      const rows = await Item.findAll({ where: scope(req), attributes: ["specs"], raw: false });
+      const counts = new Map();
+      rows.forEach((r) => (Array.isArray(r.specs) ? r.specs : []).forEach((s) => s && s.label && counts.set(s.label, (counts.get(s.label) || 0) + 1)));
+      res.json(new ApiResponse(200, [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).map(([label]) => label)));
     } catch (error) {
       next(error);
     }
@@ -64,6 +114,9 @@ module.exports = {
       if (!companyId) throw new ApiError(400, "companyId is required");
       const patch = pick(req.body, FIELDS);
       if (patch.sku === "") patch.sku = null;
+      if (patch.specs !== undefined) patch.specs = cleanSpecs(patch.specs);
+      await applyMasters({ companyId, userId: req.user.id, patch });
+      tidy(patch);
       const item = await Item.create({ ...patch, company_id: companyId, created_by: req.user.id });
       res.status(201).json(new ApiResponse(201, item, "Item created"));
     } catch (error) {
@@ -77,6 +130,9 @@ module.exports = {
       if (!item) throw new ApiError(404, "Item not found");
       const patch = pick(req.body, FIELDS);
       if (patch.sku === "") patch.sku = null;
+      if (patch.specs !== undefined) patch.specs = cleanSpecs(patch.specs);
+      await applyMasters({ companyId: item.company_id, userId: req.user.id, patch, existing: item.toJSON() });
+      tidy(patch, item.toJSON());
       // quotations already made keep the price they were issued at - only new quotations see the new rate
       await item.update({ ...patch, updated_by: req.user.id });
       res.json(new ApiResponse(200, item, "Item updated"));

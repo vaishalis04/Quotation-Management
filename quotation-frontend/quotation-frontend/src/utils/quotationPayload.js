@@ -2,7 +2,8 @@ import { uid } from './format';
 
 export const blankRow = () => ({
   key: uid(), item_id: '', name: '', description: '', hsn_sac: '', unit: 'Nos', quantity: '1', rate: '',
-  discount_type: '', discount_value: '', gst_rate: '18', section: '',
+  discount_type: '', discount_value: '', gst_rate: '18', section: '', specs: [],
+  product_id: '', brand_id: '', category_id: '', no_company: false, brand: '',
 });
 export const blankCharge = () => ({ key: uid(), name: '', amount: '', gst_rate: '18', hsn_sac: '' });
 
@@ -22,10 +23,13 @@ export function buildPayload(form, rows, charges, { editing = false } = {}) {
   const items = rows.filter(isRowFilled).map((r) => ({
     ...(r.item_id ? { item_id: r.item_id } : {}),
     name: r.name.trim(),
+    ...(r.brand ? { brand: r.brand } : {}),
     description: r.description,
     hsn_sac: r.hsn_sac,
     unit: r.unit,
     section: r.section,
+    // custom labels; always sent so removing them all on a row really clears them
+    specs: (r.specs || []).filter((s) => s.label && s.label.trim()).map((s) => ({ label: s.label.trim(), value: (s.value || '').trim() })),
     quantity: n(r.quantity),
     rate: n(r.rate),
     gst_rate: n(r.gst_rate),
@@ -66,6 +70,8 @@ export function formFromQuotation(q) {
     quantity: String(l.quantity), rate: String(l.rate), discount_type: l.discount_type || '',
     discount_value: l.discount_value === null || l.discount_value === undefined ? '' : String(l.discount_value),
     gst_rate: String(l.gst_rate), section: l.section || '',
+    specs: Array.isArray(l.specs) ? l.specs.map((s) => ({ label: s.label || '', value: s.value || '' })) : [],
+    product_id: '', brand_id: '', category_id: '', no_company: false, brand: l.brand || '',
   }));
   const charges = q.charges.map((c) => ({ key: uid(), name: c.name, amount: String(c.rate), gst_rate: String(c.gst_rate), hsn_sac: c.hsn_sac || '' }));
   const form = {
@@ -76,4 +82,24 @@ export function formFromQuotation(q) {
     terms: q.terms || '', notes: q.notes || '', template_id: q.template_id ? String(q.template_id) : '',
   };
   return { form, rows: rows.length ? rows : [blankRow()], charges };
+}
+
+// Instant, per-line figures shown while the server is still calculating (the saved/printed figures always come from the server).
+// Covers qty x rate, line discount, GST and price mode. The overall discount is applied by the server a moment later.
+const round2 = (x) => Math.round((x + Number.EPSILON) * 100) / 100;
+export function estimateLine(r, { gst_treatment: treatment, price_mode: mode } = {}) {
+  if (!hasValue(r.quantity) || !hasValue(r.rate)) return null;
+  const q = n(r.quantity); const rate = n(r.rate);
+  if (!Number.isFinite(q) || !Number.isFinite(rate)) return null;
+  const gross = round2(q * rate);
+  let disc = 0;
+  if (r.discount_type && hasValue(r.discount_value)) disc = r.discount_type === 'percent' ? (gross * n(r.discount_value)) / 100 : n(r.discount_value);
+  disc = Math.min(Math.max(Number.isFinite(disc) ? disc : 0, 0), gross);
+  const net = gross - disc;
+  const taxed = treatment !== 'no_gst';
+  const g = taxed ? n(r.gst_rate) || 0 : 0;
+  const inclusive = mode === 'inclusive' && taxed;
+  const taxable = inclusive ? net / (1 + g / 100) : net;
+  const total = inclusive ? net : taxable * (1 + g / 100);
+  return { taxable_amount: round2(taxable), line_total: round2(total) };
 }
