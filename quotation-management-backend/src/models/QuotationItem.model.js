@@ -4,7 +4,6 @@ const sequelize = require("../config/db");
 const money = () => ({ type: DataTypes.DECIMAL(16, 2), allowNull: false, defaultValue: 0 });
 const pct = () => ({ type: DataTypes.DECIMAL(6, 3), allowNull: false, defaultValue: 0 });
 
-// One row per quotation line. line_type='item' for products/services, 'charge' for freight/installation etc.
 class QuotationItem extends Model {}
 
 QuotationItem.init(
@@ -13,14 +12,14 @@ QuotationItem.init(
     quotation_id: { type: DataTypes.BIGINT, allowNull: false, references: { model: "quotations", key: "id" } },
     line_type: { type: DataTypes.ENUM("item", "charge"), allowNull: false, defaultValue: "item" },
     line_no: { type: DataTypes.INTEGER, allowNull: false },
-    section: { type: DataTypes.STRING(150), allowNull: true }, // e.g. "Camera supply", "Installation"
+    section: { type: DataTypes.STRING(150), allowNull: true },
     item_id: { type: DataTypes.BIGINT, allowNull: true },
 
     name: { type: DataTypes.STRING(500), allowNull: false },
     description: { type: DataTypes.TEXT, allowNull: true },
     brand: { type: DataTypes.STRING(100), allowNull: true },
     model_no: { type: DataTypes.STRING(100), allowNull: true },
-    specs: { type: DataTypes.JSON, allowNull: true }, // copy of the item's custom labels, frozen on the quotation
+    specs: { type: DataTypes.JSON, allowNull: true },
     hsn_sac: { type: DataTypes.STRING(10), allowNull: true },
     unit: { type: DataTypes.STRING(20), allowNull: true },
 

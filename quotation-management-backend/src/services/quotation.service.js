@@ -1,6 +1,6 @@
 const moment = require('moment-timezone');
 const ApiError = require('../utils/ApiError');
-const { Company, Customer, Item, Quotation, QuotationItem, QuotationTemplate, TermsTemplate, AuditLog, sequelize } = require('../models');
+const { Company, Customer, Item, ClientMaster, LetterheadImage, Quotation, QuotationItem, QuotationTemplate, TermsTemplate, AuditLog, sequelize } = require('../models');
 const { calculateQuotation } = require('./taxCalculator.service');
 const { allocateNumber } = require('./quotationNumber.service');
 const { getState, isValidStateCode } = require('../config/states');
@@ -95,6 +95,46 @@ const buildQuotationData = async ({ company, body, companyId }) => {
     return { name: c.name, amount: c.amount, gst_rate: c.gst_rate ?? 18, hsn_sac: clean(c.hsn_sac), description: clean(c.description) };
   });
 
+  // ---- GST scope: one rate on the whole quotation instead of a rate per line.
+  // Every item and charge gets that single rate, so the tax summary has one row.
+  const gstScope = treatment === 'regular' && body.gst_scope === 'overall' ? 'overall' : 'item';
+  let overallRate = null;
+  if (gstScope === 'overall') {
+    const raw = body.overall_gst_rate;
+    overallRate = Number(raw);
+    if (raw === undefined || raw === null || raw === '' || Number.isNaN(overallRate)) {
+      throw new ApiError(400, 'overall_gst_rate is required when GST is applied on the overall total');
+    }
+    if (!allowedRatesFor(quoteDate).includes(overallRate)) {
+      throw new ApiError(400, `GST rate ${overallRate}% is not allowed for this quotation date`);
+    }
+    resolved.forEach((r) => { r.gst_rate = overallRate; });
+    charges.forEach((c) => { c.gst_rate = overallRate; });
+  }
+
+  // ---- "Our clients" shown before the items: frozen copy so later master edits don't change an issued quotation
+  const wantedClients = (Array.isArray(body.client_ids) ? body.client_ids : []).filter(Boolean);
+  let clientsSnapshot = null;
+  if (wantedClients.length) {
+    const found = await ClientMaster.findAll({ where: { id: wantedClients, company_id: companyId, is_deleted: false } });
+    const byId = new Map(found.map((c) => [String(c.id), c]));
+    clientsSnapshot = wantedClients.map((id) => byId.get(String(id))).filter(Boolean)
+      .map((c) => ({ id: c.id, name: c.name, location: c.location }));
+    if (!clientsSnapshot.length) clientsSnapshot = null;
+  }
+
+  // ---- wide header / footer images (printed on every page): the file name is frozen on the quotation.
+  // Soft-deleted images are still found, so revising an old quotation keeps its letterhead.
+  const pickImage = async (rawId, kind) => {
+    const imgId = clean(rawId);
+    if (!imgId) return null;
+    const img = await LetterheadImage.findOne({ where: { id: imgId, company_id: companyId, kind } });
+    if (!img) throw new ApiError(404, `The selected ${kind} image was not found`);
+    return img;
+  };
+  const headerImg = await pickImage(body.header_image_id, 'header');
+  const footerImg = await pickImage(body.footer_image_id, 'footer');
+
   const roundOff = body.round_off !== undefined ? body.round_off !== false && body.round_off !== 'false' : company.round_off_enabled;
 
   const calc = calculateQuotation(
@@ -144,11 +184,22 @@ const buildQuotationData = async ({ company, body, companyId }) => {
     subject: clean(body.subject),
     reference_no: clean(body.reference_no),
     kind_attention: clean(body.kind_attention) || customer.contact_person || null,
+    header_text: clean(body.header_text),
+    footer_text: clean(body.footer_text),
+    header_image_id: headerImg ? headerImg.id : null,
+    header_image_file: headerImg ? headerImg.file_name : null,
+    footer_image_id: footerImg ? footerImg.id : null,
+    footer_image_file: footerImg ? footerImg.file_name : null,
+    letter_text: clean(body.letter_text),
+    client_ids: clientsSnapshot ? clientsSnapshot.map((c) => c.id) : null,
+    clients_snapshot: clientsSnapshot,
     customer_snapshot: customerSnapshot(customer),
     company_snapshot: companySnapshot(company),
     place_of_supply_state_code: placeOfSupply,
     supply_type: supplyType,
     gst_treatment: treatment,
+    gst_scope: gstScope,
+    overall_gst_rate: overallRate,
     price_mode: priceMode,
     discount_type: clean(body.discount_type),
     discount_value: clean(body.discount_value),
@@ -196,6 +247,22 @@ const saveLines = (quotationId, lineRows, transaction) =>
 
 const audit = (entry, transaction) => AuditLog.create(entry, { transaction });
 
+const lineToInput = (l) => ({
+  item_id: l.item_id, name: l.name, description: l.description, brand: l.brand, model_no: l.model_no, specs: l.specs, hsn_sac: l.hsn_sac,
+  unit: l.unit, section: l.section, quantity: l.quantity, rate: l.rate, discount_type: l.discount_type,
+  discount_value: l.discount_value, gst_rate: l.gst_rate,
+});
+
+// Charges are stored with rate = the entered amount
+const chargeToInput = (l) => ({ name: l.name, amount: l.rate, gst_rate: l.gst_rate, hsn_sac: l.hsn_sac, description: l.description });
+
+// header / footer / clients / GST scope carried over when a quotation is edited, revised or duplicated
+const extrasToInput = (q) => ({
+  header_text: q.header_text, footer_text: q.footer_text, client_ids: q.client_ids || [],
+  header_image_id: q.header_image_id, footer_image_id: q.footer_image_id, letter_text: q.letter_text,
+  gst_scope: q.gst_scope, overall_gst_rate: q.overall_gst_rate,
+});
+
 const createQuotation = async ({ companyId, body, user }) => {
   const company = await loadCompany(companyId);
   const data = await buildQuotationData({ company, body, companyId });
@@ -227,6 +294,7 @@ const updateQuotation = async ({ quotation, body, user }) => {
     place_of_supply_state_code: quotation.place_of_supply_state_code, gst_treatment: quotation.gst_treatment,
     price_mode: quotation.price_mode, discount_type: quotation.discount_type, discount_value: quotation.discount_value,
     round_off: quotation.round_off_enabled, terms: quotation.terms, notes: quotation.notes, template_id: quotation.template_id,
+    ...extrasToInput(quotation),
     items: existing.filter((l) => l.line_type === 'item').map(lineToInput),
     charges: existing.filter((l) => l.line_type === 'charge').map(chargeToInput),
   };
@@ -253,15 +321,6 @@ const updateQuotation = async ({ quotation, body, user }) => {
   return quotation.id;
 };
 
-const lineToInput = (l) => ({
-  item_id: l.item_id, name: l.name, description: l.description, brand: l.brand, model_no: l.model_no, specs: l.specs, hsn_sac: l.hsn_sac,
-  unit: l.unit, section: l.section, quantity: l.quantity, rate: l.rate, discount_type: l.discount_type,
-  discount_value: l.discount_value, gst_rate: l.gst_rate,
-});
-
-// Charges are stored with rate = the entered amount
-const chargeToInput = (l) => ({ name: l.name, amount: l.rate, gst_rate: l.gst_rate, hsn_sac: l.hsn_sac, description: l.description });
-
 const reviseQuotation = async ({ quotation, user }) => {
   if (!['sent', 'rejected', 'expired'].includes(quotation.status)) {
     throw new ApiError(409, `Only sent, rejected or expired quotations can be revised (this one is ${quotation.status})`);
@@ -279,6 +338,7 @@ const reviseQuotation = async ({ quotation, user }) => {
     gst_treatment: quotation.gst_treatment, price_mode: quotation.price_mode,
     discount_type: quotation.discount_type, discount_value: quotation.discount_value,
     round_off: quotation.round_off_enabled, terms: quotation.terms, notes: quotation.notes, template_id: quotation.template_id,
+    ...extrasToInput(quotation),
     items: lines.filter((l) => l.line_type === 'item').map(lineToInput),
     charges: lines.filter((l) => l.line_type === 'charge').map(chargeToInput),
   };
@@ -311,6 +371,7 @@ const duplicateQuotation = async ({ quotation, user, customerId }) => {
       discount_type: quotation.discount_type, discount_value: quotation.discount_value,
       round_off: quotation.round_off_enabled, terms: quotation.terms, notes: quotation.notes, template_id: quotation.template_id,
       place_of_supply_state_code: customerId ? undefined : quotation.place_of_supply_state_code,
+      ...extrasToInput(quotation),
       items: lines.filter((l) => l.line_type === 'item').map(lineToInput),
       charges: lines.filter((l) => l.line_type === 'charge').map(chargeToInput),
     },

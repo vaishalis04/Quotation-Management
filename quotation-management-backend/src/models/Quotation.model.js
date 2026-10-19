@@ -31,6 +31,21 @@ Quotation.init(
     reference_no: { type: DataTypes.STRING(100), allowNull: true }, // customer enquiry / RFQ number
     kind_attention: { type: DataTypes.STRING(150), allowNull: true },
 
+    // Optional header / footer text printed on the quotation (empty = nothing printed)
+    header_text: { type: DataTypes.TEXT, allowNull: true },
+    footer_text: { type: DataTypes.TEXT, allowNull: true },
+    // Optional wide header / footer images printed on every page (file name frozen at save time)
+    header_image_id: { type: DataTypes.BIGINT, allowNull: true },
+    header_image_file: { type: DataTypes.STRING(150), allowNull: true },
+    footer_image_id: { type: DataTypes.BIGINT, allowNull: true },
+    footer_image_file: { type: DataTypes.STRING(150), allowNull: true },
+    // Covering letter ("Dear Sir, ...") printed before the items
+    letter_text: { type: DataTypes.TEXT, allowNull: true },
+
+    // "Our clients" picked from the client master, printed before the items
+    client_ids: { type: DataTypes.JSON, allowNull: true },
+    clients_snapshot: { type: DataTypes.JSON, allowNull: true }, // frozen copy, like customer_snapshot
+
     // Frozen copies so old quotations never change when the master data is edited
     customer_snapshot: { type: DataTypes.JSON, allowNull: true },
     company_snapshot: { type: DataTypes.JSON, allowNull: true },
@@ -39,6 +54,9 @@ Quotation.init(
     place_of_supply_state_code: { type: DataTypes.STRING(2), allowNull: true },
     supply_type: { type: DataTypes.ENUM("intra", "inter"), allowNull: true },
     gst_treatment: { type: DataTypes.ENUM("regular", "no_gst"), allowNull: false, defaultValue: "regular" },
+    // "item": each line has its own GST %.  "overall": one GST % applied across the whole quotation.
+    gst_scope: { type: DataTypes.ENUM("item", "overall"), allowNull: false, defaultValue: "item" },
+    overall_gst_rate: { type: DataTypes.DECIMAL(5, 2), allowNull: true },
     price_mode: { type: DataTypes.ENUM("exclusive", "inclusive"), allowNull: false, defaultValue: "exclusive" },
     discount_type: { type: DataTypes.ENUM("percent", "amount"), allowNull: true },
     discount_value: { type: DataTypes.DECIMAL(14, 4), allowNull: true },

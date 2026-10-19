@@ -40,6 +40,19 @@ export const customers = {
 };
 export const terms = crud('/terms-templates');
 export const charges = crud('/charges');
+// "Our clients" printed before the items on a quotation
+export const clientMasters = crud('/client-masters');
+// Saved description texts picked into item rows
+export const descriptionMasters = crud('/description-masters');
+// Saved covering letters ("Dear Sir, ...")
+export const letterMasters = crud('/letter-masters');
+// Wide header / footer images printed on every page (PNG / JPG upload)
+export const letterheads = {
+  list: (query) => request('/letterheads', { query }),
+  upload: ({ kind, name, file }) => { const f = new FormData(); f.append('kind', kind); f.append('name', name || ''); f.append('file', file); return request('/letterheads', { method: 'POST', form: f }); },
+  update: (id, data) => request(`/letterheads/${id}`, json('PUT', data)),
+  remove: (id) => request(`/letterheads/${id}`, { method: 'DELETE' }),
+};
 // Product > Company > Category masters
 export const catalogueMasters = {
   importExcel: (file, dryRun) => { const f = new FormData(); f.append('file', file); return request(`/catalogue-masters/import${dryRun ? '?dry_run=1' : ''}`, { method: 'POST', form: f }); },

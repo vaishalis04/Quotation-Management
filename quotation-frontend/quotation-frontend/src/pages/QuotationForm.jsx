@@ -17,9 +17,12 @@ const emptyForm = () => ({
   customer_id: '', quote_date: today(), valid_until: addDays(today(), 15), subject: '', reference_no: '', kind_attention: '',
   place_of_supply_state_code: '', gst_treatment: 'regular', price_mode: 'exclusive', round_off: true,
   discount_type: '', discount_value: '', terms: '', notes: '', template_id: '',
+  header_text: '', footer_text: '', client_ids: [], gst_scope: 'item', overall_gst_rate: '18',
+  letter_text: '', header_image_id: '', footer_image_id: '',
 });
 
 const NONE_PRODUCTS = []; // stable empty list while the product masters load
+const MASTERS_PATH = '/catalogue-masters'; // <- the route where CatalogueMasters is mounted in your router
 
 export default function QuotationForm() {
   const { id } = useParams();
@@ -48,6 +51,10 @@ export default function QuotationForm() {
   const customers = useAsync(() => api.customers.list({ q: cs, limit: 50 }), [cs]);
   const layouts = useAsync(() => api.layouts.list({}), []);
   const termsList = useAsync(() => api.terms.list({}), []);
+  const clientMasters = useAsync(() => api.clientMasters.list({}), []); // "Our clients" master
+  const descMasters = useAsync(() => api.descriptionMasters.list({}), []); // saved descriptions master
+  const letterMasters = useAsync(() => api.letterMasters.list({}), []); // saved covering letters
+  const letterheads = useAsync(() => api.letterheads.list({}), []); // wide header / footer images
   const tree = useAsync(() => api.catalogueMasters.tree(), []); // Product masters: Product -> Company -> Category
   const chargeMaster = useAsync(() => api.charges.list({}), []); // saved additional charges
   const rates = useAsync(() => api.meta.gstRates(form.quote_date), [form.quote_date]);
@@ -80,6 +87,24 @@ export default function QuotationForm() {
     const c = (chargeMaster.data || []).find((x) => String(x.id) === String(chargeId));
     if (!c) return;
     setCharges((x) => [...x, { ...blankCharge(), name: c.name, hsn_sac: c.hsn_sac || '', amount: String(Number(c.default_amount)), gst_rate: String(Number(c.gst_rate)) }]);
+  };
+
+  // tick / untick a client from the client master
+  const toggleClient = (cid) => setForm((f) => {
+    const s = String(cid);
+    const has = f.client_ids.map(String).includes(s);
+    return { ...f, client_ids: has ? f.client_ids.filter((x) => String(x) !== s) : [...f.client_ids, s] };
+  });
+
+  // pick a saved letter: placeholders are filled from the form, then the text stays freely editable
+  const pickLetter = (letterId) => {
+    const l = (letterMasters.data || []).find((x) => String(x.id) === String(letterId));
+    if (!l) return;
+    const cust = (customers.data?.customers || []).find((c) => String(c.id) === String(form.customer_id));
+    const [y, m, d] = String(form.quote_date || '').split('-');
+    const vars = { customer: cust?.name || customerLabel || '', attention: form.kind_attention || '', subject: form.subject || '', date: y ? `${d}-${m}-${y}` : '' };
+    const text = Object.entries(vars).reduce((t, [k, v]) => t.split(`{{${k}}}`).join(v), l.content);
+    setForm((f) => ({ ...f, letter_text: text }));
   };
 
   // ---- live totals: the SAME body that will be saved is sent to /calculate (debounced)
@@ -128,12 +153,20 @@ export default function QuotationForm() {
     const cur = Number(current);
     return list.includes(cur) || Number.isNaN(cur) ? list : [...list, cur].sort((a, b) => a - b);
   };
+  // GST on the overall total: one rate for the whole quotation, so the per-line GST pickers are hidden
+  const overall = form.gst_treatment === 'regular' && form.gst_scope === 'overall';
+
+  const headerImages = (letterheads.data || []).filter((x) => x.kind === 'header');
+  const footerImages = (letterheads.data || []).filter((x) => x.kind === 'footer');
+  const headerPreview = headerImages.find((x) => String(x.id) === String(form.header_image_id));
+  const footerPreview = footerImages.find((x) => String(x.id) === String(form.footer_image_id));
+
   const filledRows = rows.filter(isRowFilled);
   // server figures when they belong to what is on screen; otherwise an instant estimate so qty / rate changes show at once
   const lineCalc = (r) => {
     const i = filledRows.indexOf(r);
     if (i >= 0 && calc && calcKey === payloadKey && calc.items[i]) return calc.items[i];
-    return isRowFilled(r) ? estimateLine(r, form) : null;
+    return isRowFilled(r) ? estimateLine(overall ? { ...r, gst_rate: form.overall_gst_rate } : r, form) : null;
   };
   const stateName = states.find((s) => s.code === calc?.place_of_supply_state_code)?.name;
 
@@ -186,6 +219,21 @@ export default function QuotationForm() {
                   <option value="no_gst">No GST (composition / exempt)</option>
                 </select>
               </Field>
+              {form.gst_treatment === 'regular' && (
+                <Field label="GST applied">
+                  <select className="input" value={form.gst_scope} onChange={set('gst_scope')}>
+                    <option value="item">On each item</option>
+                    <option value="overall">On the overall total</option>
+                  </select>
+                </Field>
+              )}
+              {overall && (
+                <Field label="GST % on total">
+                  <select className="input" value={form.overall_gst_rate} onChange={set('overall_gst_rate')}>
+                    {rateOptions(form.overall_gst_rate).map((g) => <option key={g} value={g}>{g}</option>)}
+                  </select>
+                </Field>
+              )}
               <Field label="Prices entered">
                 <select className="input" value={form.price_mode} onChange={set('price_mode')}>
                   <option value="exclusive">Excluding GST</option>
@@ -201,6 +249,66 @@ export default function QuotationForm() {
             </div>
           </section>
 
+          {/* ---------- header & footer (optional) */}
+          <section className="card">
+            <h3>Header & footer <span className="muted small">· optional</span></h3>
+            <div className="grid2">
+              <Field label="Header image (printed on every page)" hint="Wide image, uploaded under Masters › Header/Footer images.">
+                <select className="input" value={form.header_image_id} onChange={set('header_image_id')} aria-label="Header image">
+                  <option value="">No header image</option>
+                  {headerImages.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
+                </select>
+                {headerPreview?.data_url && <img src={headerPreview.data_url} alt="Header preview" style={{ maxWidth: '100%', maxHeight: 70, marginTop: 6 }} />}
+              </Field>
+              <Field label="Footer image (printed on every page)">
+                <select className="input" value={form.footer_image_id} onChange={set('footer_image_id')} aria-label="Footer image">
+                  <option value="">No footer image</option>
+                  {footerImages.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
+                </select>
+                {footerPreview?.data_url && <img src={footerPreview.data_url} alt="Footer preview" style={{ maxWidth: '100%', maxHeight: 70, marginTop: 6 }} />}
+              </Field>
+              <Field label="Header text (top of quotation)" wide hint="Leave empty to print no header text.">
+                <textarea className="input" rows={2} value={form.header_text} onChange={set('header_text')} />
+              </Field>
+              <Field label="Footer text (bottom of quotation)" wide hint="Leave empty to print no footer text.">
+                <textarea className="input" rows={2} value={form.footer_text} onChange={set('footer_text')} />
+              </Field>
+            </div>
+            {canManage && <Link to={`${MASTERS_PATH}?tab=letterheads`} className="small">Manage header / footer images</Link>}
+          </section>
+
+          {/* ---------- covering letter (optional) */}
+          <section className="card">
+            <h3>Letter <span className="muted small">· optional, printed before the items</span></h3>
+            {(letterMasters.data || []).length > 0 && (
+              <select className="input mb" value="" onChange={(e) => pickLetter(e.target.value)} aria-label="Saved letter">
+                <option value="">— load a saved letter —</option>
+                {letterMasters.data.map((l) => <option key={l.id} value={l.id}>{l.title}</option>)}
+              </select>
+            )}
+            <Field label="Letter text" wide hint="Leave empty to print no letter. Placeholders {{customer}} {{attention}} {{subject}} {{date}} are filled when you load a saved letter.">
+              <textarea className="input" rows={7} value={form.letter_text} onChange={set('letter_text')} placeholder={'Dear Sir,\n\nWith reference to your enquiry...'} />
+            </Field>
+            {canManage && <Link to={`${MASTERS_PATH}?tab=letters`} className="small">Manage saved letters</Link>}
+          </section>
+
+          {/* ---------- our clients (printed before the items) */}
+          <section className="card">
+            <h3>Our clients <span className="muted small">· optional, printed before the items</span></h3>
+            {(clientMasters.data || []).length === 0 ? (
+              <span className="hint">No clients saved yet{canManage ? ' — add them under Clients.' : '.'}</span>
+            ) : (
+              <div className="inline wrap">
+                {clientMasters.data.map((c) => (
+                  <label key={c.id} className="check-inline">
+                    <input type="checkbox" checked={form.client_ids.map(String).includes(String(c.id))} onChange={() => toggleClient(c.id)} /> {c.name}{c.location ? ` (${c.location})` : ''}
+                  </label>
+                ))}
+              </div>
+            )}
+            {canManage && <Link to={`${MASTERS_PATH}?tab=clients`} className="small">Manage clients</Link>}
+          </section>
+
           {/* ---------- items */}
           <section className="card">
             <h3>Items</h3>
@@ -208,7 +316,7 @@ export default function QuotationForm() {
               <table className="table items-table">
                 <thead>
                   <tr><th style={{ width: 28 }}>#</th><th style={{ minWidth: 240 }}>Item</th><th>HSN/SAC</th><th>Qty</th><th>Unit</th><th>Rate</th>
-                    <th>Discount</th><th>GST %</th><th className="r">Taxable</th><th className="r">Total</th><th /></tr>
+                    <th>Discount</th>{!overall && <th>GST %</th>}<th className="r">Taxable</th><th className="r">Total</th><th /></tr>
                 </thead>
                 <tbody>
                   {rows.map((r, i) => {
@@ -219,6 +327,13 @@ export default function QuotationForm() {
                         <td>
                           <ProductPicker tree={tree.data?.products || NONE_PRODUCTS} row={r} onChange={(patch) => updateRow(r.key, patch)} />
                           <input className="input sm mt" placeholder="Description / specification (optional)" value={r.description} onChange={(e) => updateRow(r.key, { description: e.target.value })} aria-label="Description" />
+                          {(descMasters.data || []).length > 0 && (
+                            <select className="input sm mt" value="" aria-label="Saved description"
+                              onChange={(e) => { const d = descMasters.data.find((x) => String(x.id) === e.target.value); if (d) updateRow(r.key, { description: d.content }); }}>
+                              <option value="">— saved description —</option>
+                              {descMasters.data.map((d) => <option key={d.id} value={d.id}>{d.title}</option>)}
+                            </select>
+                          )}
                           <SpecsEditor compact value={r.specs} onChange={(v) => updateRow(r.key, { specs: v })} suggestions={specSuggestions} />
                         </td>
                         <td><input className="input w90" value={r.hsn_sac} onChange={(e) => updateRow(r.key, { hsn_sac: e.target.value })} aria-label="HSN/SAC" /></td>
@@ -233,11 +348,13 @@ export default function QuotationForm() {
                             {r.discount_type && <input className="input w70" type="number" min="0" step="any" value={r.discount_value} onChange={(e) => updateRow(r.key, { discount_value: e.target.value })} aria-label="Discount value" />}
                           </div>
                         </td>
-                        <td>
-                          <select className="input w70" value={r.gst_rate} onChange={(e) => updateRow(r.key, { gst_rate: e.target.value })} disabled={form.gst_treatment === 'no_gst'} aria-label="GST rate">
-                            {rateOptions(r.gst_rate).map((g) => <option key={g} value={g}>{g}</option>)}
-                          </select>
-                        </td>
+                        {!overall && (
+                          <td>
+                            <select className="input w70" value={r.gst_rate} onChange={(e) => updateRow(r.key, { gst_rate: e.target.value })} disabled={form.gst_treatment === 'no_gst'} aria-label="GST rate">
+                              {rateOptions(r.gst_rate).map((g) => <option key={g} value={g}>{g}</option>)}
+                            </select>
+                          </td>
+                        )}
                         <td className="r">{lc ? inr(lc.taxable_amount) : '—'}</td>
                         <td className="r"><strong>{lc ? inr(lc.line_total) : '—'}</strong></td>
                         <td><button className="btn ghost sm" onClick={() => setRows((rs) => (rs.length > 1 ? rs.filter((x) => x.key !== r.key) : [blankRow()]))} aria-label="Remove item">✕</button></td>
@@ -253,15 +370,21 @@ export default function QuotationForm() {
           {/* ---------- charges & discount */}
           <section className="card">
             <h3>Additional charges & overall discount</h3>
-            <p className="muted small">Charges such as freight or installation are taxed with their own rate and are not discounted.</p>
+            <p className="muted small">
+              {overall
+                ? 'Charges such as freight or installation are taxed at the same overall GST rate and are not discounted.'
+                : 'Charges such as freight or installation are taxed with their own rate and are not discounted.'}
+            </p>
             {charges.map((c) => (
               <div className="inline mb" key={c.key}>
                 <input className="input grow" placeholder="Charge name (e.g. Installation)" value={c.name} onChange={(e) => updateCharge(c.key, { name: e.target.value })} aria-label="Charge name" />
                 <input className="input w90" placeholder="HSN/SAC" value={c.hsn_sac} onChange={(e) => updateCharge(c.key, { hsn_sac: e.target.value })} aria-label="Charge HSN" />
                 <input className="input w100" type="number" min="0" step="any" placeholder="Amount" value={c.amount} onChange={(e) => updateCharge(c.key, { amount: e.target.value })} aria-label="Charge amount" />
-                <select className="input w70" value={c.gst_rate} onChange={(e) => updateCharge(c.key, { gst_rate: e.target.value })} disabled={form.gst_treatment === 'no_gst'} aria-label="Charge GST">
-                  {rateOptions(c.gst_rate).map((g) => <option key={g} value={g}>{g}</option>)}
-                </select>
+                {!overall && (
+                  <select className="input w70" value={c.gst_rate} onChange={(e) => updateCharge(c.key, { gst_rate: e.target.value })} disabled={form.gst_treatment === 'no_gst'} aria-label="Charge GST">
+                    {rateOptions(c.gst_rate).map((g) => <option key={g} value={g}>{g}</option>)}
+                  </select>
+                )}
                 <button className="btn ghost sm" onClick={() => setCharges((x) => x.filter((y) => y.key !== c.key))} aria-label="Remove charge">✕</button>
               </div>
             ))}

@@ -74,6 +74,10 @@ app.use('/api/v1/quotation-templates', templateRoutes);
 app.use('/api/v1/quotations', quotationRoutes);
 app.use('/api/v1/meta', metaRoutes);
 app.use('/api/v1/reports', reportRoutes);
+app.use("/api/v1/client-masters", require("./src/routes/clientMaster.routes"));
+app.use("/api/v1/description-masters", require("./src/routes/descriptionMaster.routes"));
+app.use("/api/v1/letter-masters", require("./src/routes/Lettermaster.routes"));
+app.use("/api/v1/letterheads", require("./src/routes/Letterhead.routes"));
 
 app.get('/api/health', (req, res) => {
   res.json({ status: 'OK', timestamp: new Date(), database: 'MySQL' });

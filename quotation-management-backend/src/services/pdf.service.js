@@ -1,9 +1,3 @@
-/**
- * PDF output.
- *  docx / xlsx layouts -> LibreOffice headless (install it on the server; set SOFFICE_PATH if not on PATH)
- *  html layouts        -> puppeteer (optional: npm i puppeteer). JavaScript is disabled and every network request
- *                         except data: URIs is blocked, so an uploaded layout can never reach other servers.
- */
 const fs = require('fs');
 const os = require('os');
 const path = require('path');

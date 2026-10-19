@@ -30,7 +30,7 @@ const assertCanModify = (req, q) => {
 
 // MySQL hands DECIMAL columns back as strings ("25230.00"); the API always returns real numbers
 const QUOTE_NUMBERS = ["items_gross", "line_discount_total", "overall_discount", "taxable_amount", "cgst_amount", "sgst_amount",
-  "igst_amount", "tax_amount", "round_off", "grand_total", "discount_value"];
+  "igst_amount", "tax_amount", "round_off", "grand_total", "discount_value", "overall_gst_rate"];
 const LINE_NUMBERS = ["quantity", "rate", "discount_value", "gross_amount", "line_discount", "overall_discount_share", "taxable_amount",
   "gst_rate", "cgst_rate", "cgst_amount", "sgst_rate", "sgst_amount", "igst_rate", "igst_amount", "tax_amount", "line_total"];
 const numify = (obj, keys) => keys.forEach((k) => { if (obj[k] !== null && obj[k] !== undefined) obj[k] = Number(obj[k]); });
@@ -59,6 +59,8 @@ module.exports = {
         supply_type: data.header.supply_type,
         place_of_supply_state_code: data.header.place_of_supply_state_code,
         gst_treatment: data.header.gst_treatment,
+        gst_scope: data.header.gst_scope,
+        overall_gst_rate: data.header.overall_gst_rate,
         price_mode: data.header.price_mode,
         items: data.calc.items,
         charges: data.calc.charges,
@@ -93,7 +95,7 @@ module.exports = {
 
       const { rows, count } = await Quotation.findAndCountAll({
         where,
-        attributes: { exclude: ["customer_snapshot", "company_snapshot", "tax_summary", "terms", "notes"] },
+        attributes: { exclude: ["customer_snapshot", "company_snapshot", "clients_snapshot", "tax_summary", "terms", "notes", "header_text", "footer_text", "letter_text"] },
         include: [{ model: Customer, as: "customer", attributes: ["id", "name", "gstin"] }],
         order: [["quote_date", "DESC"], ["id", "DESC"]],
         limit, offset, distinct: true,

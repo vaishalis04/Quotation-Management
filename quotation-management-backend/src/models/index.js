@@ -14,6 +14,10 @@ const ChargeMaster = require("./ChargeMaster.model");
 const ProductMaster = require("./ProductMaster.model");
 const BrandMaster = require("./BrandMaster.model");
 const CategoryMaster = require("./CategoryMaster.model");
+const ClientMaster = require("./ClientMaster.model");
+const DescriptionMaster = require("./DescriptionMaster.model");
+const LetterMaster = require("./LetterMaster.model");
+const LetterheadImage = require("./LetterheadImage.model");
 
 // Company -> everything it owns
 Company.hasMany(User, { foreignKey: "company_id", as: "users" });
@@ -39,6 +43,18 @@ NumberSeries.belongsTo(Company, { foreignKey: "company_id", as: "company" });
 
 Company.hasMany(ChargeMaster, { foreignKey: "company_id", as: "charge_masters" });
 ChargeMaster.belongsTo(Company, { foreignKey: "company_id", as: "company" });
+
+Company.hasMany(ClientMaster, { foreignKey: "company_id", as: "client_masters" });
+ClientMaster.belongsTo(Company, { foreignKey: "company_id", as: "company" });
+
+Company.hasMany(DescriptionMaster, { foreignKey: "company_id", as: "description_masters" });
+DescriptionMaster.belongsTo(Company, { foreignKey: "company_id", as: "company" });
+
+Company.hasMany(LetterMaster, { foreignKey: "company_id", as: "letter_masters" });
+LetterMaster.belongsTo(Company, { foreignKey: "company_id", as: "company" });
+
+Company.hasMany(LetterheadImage, { foreignKey: "company_id", as: "letterhead_images" });
+LetterheadImage.belongsTo(Company, { foreignKey: "company_id", as: "company" });
 
 // Quotation
 Customer.hasMany(Quotation, { foreignKey: "customer_id", as: "quotations" });
@@ -76,4 +92,8 @@ module.exports = {
   ProductMaster,
   BrandMaster,
   CategoryMaster,
+  ClientMaster,
+  DescriptionMaster,
+  LetterMaster,
+  LetterheadImage,
 };
